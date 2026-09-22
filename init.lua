@@ -30,7 +30,7 @@ local packer_bootstrap = ensure_packer()
 -- OPÇÕES BÁSICAS
 ------------------------------------------------------------
 vim.deprecate = function() end
---vim.opt.guicursor = ""-- comando que faz com que seja bloco ao inves de linha
+--vim.opt.guicursor = "" -- comando que faz com que seja bloco ao inves de linha
 vim.opt.number = true
 vim.opt.tabstop = 4
 vim.opt.shiftwidth = 4
@@ -908,17 +908,10 @@ local function post_install_setup()
             { "<leader>3",       desc = "Harpoon: file 3" },
             { "<leader>4",       desc = "Harpoon: file 4" },
             --
-            { "<leader>vtn",     desc = "Test: run nearest" },
-            { "<leader>vtf",     desc = "Test: run file" },
-            { "<leader>vts",     desc = "Test: toggle summary" },
-            { "<leader>vto",     desc = "Test: open output" },
-            { "<leader>rr",      desc = "REST: run request under cursor" },
-            { "<leader>rl",      desc = "REST: run last request" },
-            { "<leader>D",       desc = "Toggle DB UI" },
-            { "<leader>xx",      desc = "Trouble: diagnostics" },
-            { "<leader>xq",      desc = "Trouble: quickfix" },
+            { "<leader>T",       desc = "Trouble: diagnostics" },
+            { "<leader>TT",      desc = "Trouble: quickfix" },
             -- Comment toggle (modo visual)
-            { "<leader>m",       desc = "Toggle comment",                mode = "v" },
+            { "<leader>m",       desc = "Toggle comment",              mode = "v" },
         })
     end)
 
