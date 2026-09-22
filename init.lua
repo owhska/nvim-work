@@ -516,13 +516,10 @@ require('packer').startup(function(use)
         },
     }
 
-    -- Format on save
     use 'stevearc/conform.nvim'
 
-    -- Front-end (React/TSX)
     use 'windwp/nvim-ts-autotag'
 
-    -- Diagnostics/navegação
     use {
         'folke/trouble.nvim',
         requires = { 'nvim-tree/nvim-web-devicons' },
@@ -761,7 +758,6 @@ local function post_install_setup()
         })
     end)
 
-    -- Neotest (Python/Django + Jest)
     pcall(function()
         require('neotest').setup({
             adapters = {
@@ -776,7 +772,6 @@ local function post_install_setup()
         })
     end)
 
-    -- Conform: format on save
     pcall(function()
         require('conform').setup({
             formatters_by_ft = {
@@ -796,17 +791,13 @@ local function post_install_setup()
         })
     end)
 
-    -- nvim-ts-autotag
     pcall(function()
         require('nvim-ts-autotag').setup()
     end)
 
-    -- trouble.nvim
     pcall(function()
         require('trouble').setup()
     end)
-
-
 
     pcall(function()
         require('diffview').setup({
