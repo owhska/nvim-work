@@ -1030,7 +1030,7 @@ local function post_install_setup()
     end, { desc = 'FZF Files' })
 
     vim.keymap.set('n', '<leader><leader>', function()
-        require('fzf-lua').live_grep()
+        require('fzf-lua').grep()
     end, { desc = 'FZF Grep' })
 
     vim.keymap.set('n', '<leader>s', function()
@@ -1159,36 +1159,71 @@ local function post_install_setup()
     -- end
     -- end, { desc = "Pesquisar no Google" })
 
-    local dirs_cache = nil
+    local dirs_cache
+    local ignored = {
+        [".git"] = true,
+        ["node_modules"] = true,
+        ["dist"] = true,
+        ["build"] = true,
+        [".cache"] = true,
+        [".npm"] = true,
+        [".cargo"] = true,
+        [".rustup"] = true,
+    }
 
-    local function open_dir_picker(new_tab)
-        local home = vim.fn.expand("$HOME")
+    local function scan_dirs(root, include_hidden)
+        local result = {}
+        local stack = { root }
 
-        if not dirs_cache then
-            dirs_cache = {}
+        while #stack > 0 do
+            local path = stack[#stack]
+            stack[#stack] = nil
 
-            local function scan(path, include_hidden)
-                for name, type in vim.fs.dir(path) do
+            local handle = vim.uv.fs_scandir(path)
+
+            if handle then
+                while true do
+                    local name, type = vim.uv.fs_scandir_next(handle)
+
+                    if not name then
+                        break
+                    end
+
                     if type == "directory" then
-                        local hidden = name:sub(1, 1) == "."
+                        local hidden = name:byte(1) == 46
 
-                        if include_hidden or not hidden then
+                        if (include_hidden or not hidden) and not ignored[name] then
                             local dir = path .. "/" .. name
-                            dirs_cache[#dirs_cache + 1] = dir
-                            scan(dir, include_hidden)
+
+                            result[#result + 1] = dir
+                            stack[#stack + 1] = dir
                         end
                     end
                 end
             end
+        end
 
-            scan(home, false)
+        return result
+    end
 
+    local function open_dir_picker(new_tab)
+        if not dirs_cache then
+            local home = vim.env.HOME
             local config = home .. "/.config"
+
+            dirs_cache = scan_dirs(home, false)
 
             if vim.uv.fs_stat(config) then
                 dirs_cache[#dirs_cache + 1] = config
-                scan(config, true)
+
+                local config_dirs = scan_dirs(config, true)
+
+                for i = 1, #config_dirs do
+                    dirs_cache[#dirs_cache + 1] = config_dirs[i]
+                end
             end
+
+            table.sort(dirs_cache)
         end
 
         require("fzf-lua").fzf_exec(dirs_cache, {
@@ -1200,6 +1235,7 @@ local function post_install_setup()
                 ["--margin"] = "0",
                 ["--padding"] = "0",
             },
+
             actions = {
                 ["default"] = function(selected)
                     local dir = selected[1]
@@ -1208,13 +1244,11 @@ local function post_install_setup()
                         return
                     end
 
-                    local target = vim.fn.fnameescape(vim.fn.trim(dir))
-
                     if new_tab then
-                        vim.cmd.tabnew()
-                        vim.cmd.tcd(target)
+                        vim.cmd("tabnew")
+                        vim.cmd.tcd(vim.fn.fnameescape(dir))
                     else
-                        vim.cmd.cd(target)
+                        vim.cmd.cd(vim.fn.fnameescape(dir))
                     end
 
                     vim.cmd.edit(".")
