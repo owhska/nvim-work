@@ -909,7 +909,7 @@ local function post_install_setup()
             { "<leader>4",       desc = "Harpoon: file 4" },
             --
             { "<leader>T",       desc = "Trouble: diagnostics" },
-            { "<leader>TT",      desc = "Trouble: quickfix" },
+            { "<leader>lT",      desc = "Trouble: quickfix" },
             -- Comment toggle (modo visual)
             { "<leader>m",       desc = "Toggle comment",              mode = "v" },
         })
@@ -1006,8 +1006,7 @@ local function post_install_setup()
 
     -- trouble.nvim
     vim.keymap.set('n', '<leader>T', '<cmd>Trouble diagnostics toggle<CR>', { desc = 'Trouble: diagnostics' })
-    vim.keymap.set('n', '<leader>TT', '<cmd>Trouble qflist toggle<CR>', { desc = 'Trouble: quickfix' })
-
+    vim.keymap.set('n', '<leader>lT', '<cmd>Trouble qflist toggle<CR>', { desc = 'Trouble: quickfix' })
 
     vim.keymap.set('n', '<leader>f', function()
         require('fzf-lua').files()
