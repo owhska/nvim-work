@@ -1013,7 +1013,7 @@ local function post_install_setup()
     end, { desc = 'FZF Files' })
 
     vim.keymap.set('n', '<leader><leader>', function()
-        require('fzf-lua').grep()
+        require('fzf-lua').live_grep()
     end, { desc = 'FZF Grep' })
 
     vim.keymap.set('n', '<leader>s', function()
