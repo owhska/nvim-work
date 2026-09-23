@@ -589,7 +589,8 @@ local function post_install_setup()
                 list = {
                     max_items = 10,
                     selection = {
-                        preselect = true,
+                        preselect = false,
+                        auto_insert = true,
                     },
                 },
             },
