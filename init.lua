@@ -568,8 +568,8 @@ local function post_install_setup()
             keymap = {
                 preset = 'default',
                 ['<C-Space>'] = { 'show', 'show_documentation', 'hide_documentation' },
-                ['<Tab>'] = { 'accept', 'fallback' }, -- TAB aceita a sugestão
-                ['<S-Tab>'] = { 'select_prev', 'fallback' },
+                ['<Tab>'] = { 'select_next', 'snippet_forward', 'fallback' },
+                ['<S-Tab>'] = { 'select_prev', 'snippet_backward', 'fallback' },
                 ['<C-n>'] = { 'select_next', 'fallback' },
                 ['<C-p>'] = { 'select_prev', 'fallback' },
                 ['<C-e>'] = { 'hide' },
