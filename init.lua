@@ -453,38 +453,63 @@ local function setup_autopairs()
         ['`'] = '`',
     }
 
-    local function insert_pair(l, r)
-        local line = vim.api.nvim_get_current_line()
-        local col = vim.api.nvim_win_get_cursor(0)[2]
-        local before = line:sub(1, col)
-        local after = line:sub(col + 1)
+    local closers = {}
+    for _, r in pairs(pairs_map) do closers[r] = true end
 
-        if after:sub(1, 1) == r then
-            vim.api.nvim_win_set_cursor(0, { vim.fn.line('.'), col + 1 })
-        else
-            vim.api.nvim_set_current_line(before .. l .. r .. after)
-            vim.api.nvim_win_set_cursor(0, { vim.fn.line('.'), col + 1 })
-        end
+    local no_apostrophe = { markdown = true, text = true, gitcommit = true, tex = true }
+
+    local function ctx()
+        local col = vim.api.nvim_win_get_cursor(0)[2]
+        local line = vim.api.nvim_get_current_line()
+        return line:sub(col, col), line:sub(col + 1, col + 1)
+    end
+
+    local function can_close(nxt)
+        return nxt == '' or nxt:match('%s') ~= nil or closers[nxt] == true
     end
 
     for l, r in pairs(pairs_map) do
         if l ~= r then
-            vim.keymap.set('i', l, l .. r .. '<Left>', { silent = true })
+            vim.keymap.set('i', l, function()
+                local _, nxt = ctx()
+                return can_close(nxt) and (l .. r .. '<Left>') or l
+            end, { expr = true })
+
             vim.keymap.set('i', r, function()
-                local col = vim.api.nvim_win_get_cursor(0)[2]
-                local nxt = vim.api.nvim_get_current_line():sub(col + 1, col + 1)
+                local _, nxt = ctx()
                 return nxt == r and '<Right>' or r
             end, { expr = true })
         else
             vim.keymap.set('i', l, function()
-                local col = vim.api.nvim_win_get_cursor(0)[2]
-                local line = vim.api.nvim_get_current_line()
-                if line:sub(col + 1, col + 1) == l then return '<Right>' end
-                if line:sub(col, col):match('%w') then return l end
+                local prev, nxt = ctx()
+                if nxt == l then return '<Right>' end
+                if l == "'" and no_apostrophe[vim.bo.filetype] then return l end
+                if prev:match('[%w_]') or prev == l or not can_close(nxt) then
+                    return l
+                end
                 return l .. l .. '<Left>'
             end, { expr = true })
         end
     end
+
+    vim.keymap.set('i', '<BS>', function()
+        local prev, nxt = ctx()
+        if prev ~= '' and pairs_map[prev] == nxt then
+            return '<BS><Del>'
+        end
+        return '<BS>'
+    end, { expr = true })
+
+    vim.keymap.set('i', '<CR>', function()
+        if vim.fn.pumvisible() == 1 then return '<CR>' end
+        local prev, nxt = ctx()
+        if (prev == '(' and nxt == ')')
+            or (prev == '[' and nxt == ']')
+            or (prev == '{' and nxt == '}') then
+            return '<CR><C-o>O'
+        end
+        return '<CR>'
+    end, { expr = true })
 end
 
 setup_autopairs()
