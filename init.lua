@@ -53,6 +53,7 @@ vim.o.shortmess = vim.o.shortmess .. "atI"
 vim.o.cmdheight = 1
 vim.o.laststatus = 0
 vim.opt.ruler = false
+--vim.opt.cursorline = true
 
 local repo_cache = {}
 
@@ -62,22 +63,36 @@ end
 
 -- com cache: o tabline redesenha a cada movimento do cursor,
 -- então não dá para fazer fs_stat em toda chamada
-local function get_repo_name(cwd)
-    if repo_cache[cwd] then return repo_cache[cwd] end
+local function tab_dir(tabnr, buf)
+    local cwd = vim.fn.getcwd(-1, tabnr)
 
-    local dir, name = cwd, nil
-    while dir and dir ~= "" do
-        if vim.uv.fs_stat(dir .. "/.git") then
-            name = vim.fn.fnamemodify(dir, ":t")
+    if vim.bo[buf].filetype == "netrw" then
+        return vim.b[buf].netrw_curdir or cwd
+    end
+    if vim.bo[buf].buftype ~= "" then return cwd end
+
+    local name = vim.api.nvim_buf_get_name(buf)
+    if name == "" or name:match("^%a[%w+.-]*://") then return cwd end
+
+    return vim.fn.fnamemodify(name, ":p:h")
+end
+
+local function get_repo_name(dir)
+    if repo_cache[dir] then return repo_cache[dir] end
+
+    local d, name = dir, nil
+    while d and d ~= "" do
+        if vim.uv.fs_stat(d .. "/.git") then
+            name = vim.fn.fnamemodify(d, ":t")
             break
         end
-        local parent = vim.fn.fnamemodify(dir, ":h")
-        if parent == dir then break end
-        dir = parent
+        local parent = vim.fn.fnamemodify(d, ":h")
+        if parent == d then break end
+        d = parent
     end
 
-    name = name or vim.fn.fnamemodify(cwd, ":t")
-    repo_cache[cwd] = name
+    name = name or vim.fn.fnamemodify(dir, ":t")
+    repo_cache[dir] = name
     return name
 end
 
@@ -97,13 +112,13 @@ function _G.NvimTabLine()
     local parts = {}
 
     for i = 1, vim.fn.tabpagenr("$") do
-        local repo = get_repo_name(vim.fn.getcwd(-1, i))
+        local buf = vim.fn.tabpagebuflist(i)[vim.fn.tabpagewinnr(i)]
+        local repo = get_repo_name(tab_dir(i, buf))
         local label
 
         if is_diffview_tab(i) then
             label = "Diff: " .. repo
         else
-            local buf = vim.fn.tabpagebuflist(i)[vim.fn.tabpagewinnr(i)]
             local name
             if vim.bo[buf].buftype == "terminal" then
                 name = "[term]"
