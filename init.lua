@@ -54,6 +54,15 @@ vim.o.cmdheight = 1
 vim.o.laststatus = 0
 vim.opt.ruler = false
 --vim.opt.cursorline = true
+vim.o.laststatus = 1
+
+function _G.StatusName()
+    if vim.bo.buftype == "terminal" then return "term" end
+    local n = vim.fn.expand("%:t")
+    return n ~= "" and n or "No Name"
+end
+
+vim.o.statusline = " %{v:lua.StatusName()} %m"
 
 local repo_cache = {}
 
@@ -190,6 +199,11 @@ vim.api.nvim_create_autocmd("FileType", {
 
         vim.opt_local.winbar = "%{get(b:, 'netrw_curdir', '')}"
     end,
+})
+
+vim.api.nvim_create_autocmd("FileType", {
+    pattern = { "NvimTree", "qf", "trouble", "netrw", "undotree", "DiffviewFiles", "DiffviewFileHistory" },
+    callback = function() vim.opt_local.statusline = " " end,
 })
 
 -- vim.cmd([[
@@ -1449,7 +1463,7 @@ function ColorMyPencils(color)
 
     vim.api.nvim_set_hl(0, "Normal", { bg = "none" })
     vim.api.nvim_set_hl(0, "NormalFloat", { bg = "none" })
-    vim.api.nvim_set_hl(0, "LineNr", { fg = "#b5b5b5" })
+    vim.api.nvim_set_hl(0, "LineNr", { fg = "#393939" })
     vim.api.nvim_set_hl(0, "MsgArea", { bg = "none" })
 
     vim.api.nvim_set_hl(0, "TabLine", { bg = "none" })
@@ -1467,6 +1481,8 @@ function ColorMyPencils(color)
     vim.api.nvim_set_hl(0, "WinBar", { bg = "none" })
     vim.api.nvim_set_hl(0, "WinBarNC", { bg = "none" })
     vim.api.nvim_set_hl(0, "TabLineSel", { bold = true, fg = "#e5c07b" })
+    vim.api.nvim_set_hl(0, "StatusLine", { fg = "#1e1e1e", bg = "#505050", bold = true })
+    vim.api.nvim_set_hl(0, "StatusLineNC", { fg = "#b5b5b5", bg = "#2a2a2a" })
 end
 
 ColorMyPencils()
