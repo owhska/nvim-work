@@ -40,17 +40,131 @@ vim.g.mapleader = " "
 vim.opt.mouse = "a"
 vim.opt.clipboard = "unnamedplus"
 vim.opt_local.ruler = false
-vim.opt_local.showmode = true
+--vim.opt_local.showmode = true
 vim.opt.swapfile = false
 vim.opt.backup = false
 vim.opt.timeoutlen = 300
 vim.opt.updatetime = 50
 vim.g.netrw_banner = 0
 vim.g.netrw_liststyle = 0
-vim.o.statusline = " [FILENAME: %t] %= [TYPE: %Y] [LINE: %l/%L : %c] [%p%%] %{Modified_Get()}"
-vim.o.laststatus = 2
+--vim.o.statusline = " [FILENAME: %t] %= [TYPE: %Y] [LINE: %l/%L : %c] [%p%%] %{Modified_Get()}"
+--vim.o.laststatus = 2
 vim.o.shortmess = vim.o.shortmess .. "atI"
 vim.o.cmdheight = 1
+vim.o.laststatus = 0
+vim.opt.ruler = false
+
+local repo_cache = {}
+
+local function esc(s)
+    return (s:gsub("%%", "%%%%"))
+end
+
+-- com cache: o tabline redesenha a cada movimento do cursor,
+-- então não dá para fazer fs_stat em toda chamada
+local function get_repo_name(cwd)
+    if repo_cache[cwd] then return repo_cache[cwd] end
+
+    local dir, name = cwd, nil
+    while dir and dir ~= "" do
+        if vim.uv.fs_stat(dir .. "/.git") then
+            name = vim.fn.fnamemodify(dir, ":t")
+            break
+        end
+        local parent = vim.fn.fnamemodify(dir, ":h")
+        if parent == dir then break end
+        dir = parent
+    end
+
+    name = name or vim.fn.fnamemodify(cwd, ":t")
+    repo_cache[cwd] = name
+    return name
+end
+
+local function is_diffview_tab(tabnr)
+    local tabid = vim.api.nvim_list_tabpages()[tabnr]
+    if not tabid then return false end
+
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tabid)) do
+        local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
+        if ft:match("^Diffview") then return true end
+    end
+    return false
+end
+
+function _G.NvimTabLine()
+    local current = vim.fn.tabpagenr()
+    local parts = {}
+
+    for i = 1, vim.fn.tabpagenr("$") do
+        local repo = get_repo_name(vim.fn.getcwd(-1, i))
+        local label
+
+        if is_diffview_tab(i) then
+            label = "Diff: " .. repo
+        else
+            local buf = vim.fn.tabpagebuflist(i)[vim.fn.tabpagewinnr(i)]
+            local name
+            if vim.bo[buf].buftype == "terminal" then
+                name = "[term]"
+            else
+                name = vim.fn.fnamemodify(vim.fn.bufname(buf), ":t")
+                if name == "" then name = "[No Name]" end
+            end
+            label = repo .. " - " .. name
+            if i ~= current and vim.bo[buf].modified then
+                label = label .. " +"
+            end
+        end
+
+        local hl = i == current and "%#TabLineSel#" or "%#TabLine#"
+        -- %iT = aba clicável com o mouse
+        parts[#parts + 1] = "%" .. i .. "T" .. hl .. " " .. i .. ":" .. esc(label) .. " "
+    end
+
+    -- lado direito
+    local ft = vim.bo.filetype
+    ft = ft ~= "" and (" [" .. (ft:gsub("^%l", string.upper)) .. "]") or ""
+
+    local ok, head = pcall(vim.fn.FugitiveHead)
+    local branch = (ok and head ~= "") and (" git:" .. esc(head)) or ""
+
+    local S = vim.diagnostic.severity
+    local d = vim.diagnostic.count(0)
+    local diag = ""
+    if d[S.ERROR] then diag = diag .. " E" .. d[S.ERROR] end
+    if d[S.WARN] then diag = diag .. " W" .. d[S.WARN] end
+
+    local lnum, last = vim.fn.line("."), vim.fn.line("$")
+    local info = branch .. diag .. ft
+        .. " " .. lnum .. "/" .. last .. ":" .. vim.fn.col(".")
+        .. " " .. math.floor(lnum * 100 / last) .. "%%"
+        .. (vim.bo.modified and " [+]" or "")
+        .. " "
+
+    return table.concat(parts, "%#TabLineFill#|") .. "%#TabLineFill#%T%=" .. info
+end
+
+vim.o.showtabline = 2
+vim.o.tabline = "%!v:lua.NvimTabLine()"
+
+vim.api.nvim_create_autocmd("DirChanged", {
+    callback = function() repo_cache = {} end,
+})
+
+vim.api.nvim_create_autocmd({
+    "CursorMoved", "CursorMovedI", "ModeChanged",
+    "TextChanged", "TextChangedI", "BufModifiedSet", "DiagnosticChanged",
+}, {
+    callback = function() vim.cmd.redrawtabline() end,
+})
+
+--vim.o.winbar = "%#TabSep#%{repeat('─', winwidth(0))}"
+
+vim.api.nvim_create_autocmd("FileType", {
+    pattern = { "NvimTree", "dashboard", "qf", "DiffviewFiles", "DiffviewFileHistory", "trouble" },
+    callback = function() vim.opt_local.winbar = "" end,
+})
 
 vim.api.nvim_create_autocmd("FileType", {
     pattern = "netrw",
@@ -63,11 +177,11 @@ vim.api.nvim_create_autocmd("FileType", {
     end,
 })
 
-vim.cmd([[
-function! Modified_Get()
-    return &modified ? '[+]' : ''
-endfunction
-]])
+-- vim.cmd([[
+-- function! Modified_Get()
+-- return &modified ? '[+]' : ''
+-- endfunction
+-- ]])
 
 local function web_search()
     local query = vim.fn.input("Search: ")
@@ -254,67 +368,65 @@ vim.keymap.set("n", "<leader>/", web_search, {
     desc = "Web search",
 })
 
-local function get_repo_name(cwd)
-    local dir = cwd
-    while dir and dir ~= "" do
-        if vim.uv.fs_stat(dir .. "/.git") then
-            return vim.fn.fnamemodify(dir, ":t")
-        end
-        local parent = vim.fn.fnamemodify(dir, ":h")
-        if parent == dir then break end
-        dir = parent
-    end
-    return vim.fn.fnamemodify(cwd, ":t")
-end
+-- local function get_repo_name(cwd)
+-- local dir = cwd
+-- while dir and dir ~= "" do
+-- if vim.uv.fs_stat(dir .. "/.git") then
+-- return vim.fn.fnamemodify(dir, ":t")
+-- end
+-- local parent = vim.fn.fnamemodify(dir, ":h")
+-- if parent == dir then break end
+-- dir = parent
+-- end
+-- return vim.fn.fnamemodify(cwd, ":t")
+-- end
+--
+-- local function is_diffview_tab(tabnr)
+-- local ok, tabid = pcall(function() return vim.api.nvim_list_tabpages()[tabnr] end)
+-- if not ok or not tabid then return false end
+--
+-- for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tabid)) do
+-- local buf = vim.api.nvim_win_get_buf(win)
+-- local ft = vim.bo[buf].filetype
+-- if ft:match("^Diffview") then
+-- return true
+-- end
+-- end
+--
+-- return false
+-- end
 
-local function is_diffview_tab(tabnr)
-    local ok, tabid = pcall(function() return vim.api.nvim_list_tabpages()[tabnr] end)
-    if not ok or not tabid then return false end
-
-    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tabid)) do
-        local buf = vim.api.nvim_win_get_buf(win)
-        local ft = vim.bo[buf].filetype
-        if ft:match("^Diffview") then
-            return true
-        end
-    end
-
-    return false
-end
-
-function _G.NvimTabLine()
-    local s = ""
-
-    for i = 1, vim.fn.tabpagenr("$") do
-        local winnr = vim.fn.tabpagewinnr(i)
-        local buflist = vim.fn.tabpagebuflist(i)
-        local bufnr = buflist[winnr]
-        local cwd = vim.fn.getcwd(-1, i)
-        local repo = get_repo_name(cwd)
-
-        local label
-        if is_diffview_tab(i) then
-            label = "Diff: " .. repo
-        else
-            local fname = vim.fn.bufname(bufnr)
-            fname = (fname ~= "" and vim.fn.fnamemodify(fname, ":t")) or "[No Name]"
-            label = repo .. " - " .. fname
-        end
-
-        if i == vim.fn.tabpagenr() then
-            s = s .. "%#TabLineSel#"
-        else
-            s = s .. "%#TabLine#"
-        end
-
-        s = s .. "%" .. i .. "T" .. " " .. label .. " "
-    end
-
-    s = s .. "%#TabLineFill#"
-    return s
-end
-
-vim.o.tabline = "%!v:lua.NvimTabLine()"
+-- function _G.NvimTabLine()
+-- local s = ""
+--
+-- for i = 1, vim.fn.tabpagenr("$") do
+-- local winnr = vim.fn.tabpagewinnr(i)
+-- local buflist = vim.fn.tabpagebuflist(i)
+-- local bufnr = buflist[winnr]
+-- local cwd = vim.fn.getcwd(-1, i)
+-- local repo = get_repo_name(cwd)
+--
+-- local label
+-- if is_diffview_tab(i) then
+-- label = "Diff: " .. repo
+-- else
+-- local fname = vim.fn.bufname(bufnr)
+-- fname = (fname ~= "" and vim.fn.fnamemodify(fname, ":t")) or "[No Name]"
+-- label = repo .. " - " .. fname
+-- end
+--
+-- if i == vim.fn.tabpagenr() then
+-- s = s .. "%#TabLineSel#"
+-- else
+-- s = s .. "%#TabLine#"
+-- end
+--
+-- s = s .. "%" .. i .. "T" .. " " .. label .. " "
+-- end
+--
+-- s = s .. "%#TabLineFill#"
+-- return s
+-- end
 
 local function setup_autopairs()
     local pairs_map = {
@@ -341,9 +453,22 @@ local function setup_autopairs()
     end
 
     for l, r in pairs(pairs_map) do
-        vim.keymap.set('i', l, function()
-            insert_pair(l, r)
-        end, { noremap = true, silent = true })
+        if l ~= r then
+            vim.keymap.set('i', l, l .. r .. '<Left>', { silent = true })
+            vim.keymap.set('i', r, function()
+                local col = vim.api.nvim_win_get_cursor(0)[2]
+                local nxt = vim.api.nvim_get_current_line():sub(col + 1, col + 1)
+                return nxt == r and '<Right>' or r
+            end, { expr = true })
+        else
+            vim.keymap.set('i', l, function()
+                local col = vim.api.nvim_win_get_cursor(0)[2]
+                local line = vim.api.nvim_get_current_line()
+                if line:sub(col + 1, col + 1) == l then return '<Right>' end
+                if line:sub(col, col):match('%w') then return l end
+                return l .. l .. '<Left>'
+            end, { expr = true })
+        end
     end
 end
 
@@ -505,20 +630,12 @@ require('packer').startup(function(use)
     }
 
     use 'nvim-neotest/nvim-nio'
-    use {
-        'nvim-neotest/neotest',
-        requires = {
-            'nvim-lua/plenary.nvim',
-            'nvim-treesitter/nvim-treesitter',
-            'nvim-neotest/nvim-nio',
-            'nvim-neotest/neotest-python',
-            'nvim-neotest/neotest-jest',
-        },
-    }
 
     use 'stevearc/conform.nvim'
 
     use 'windwp/nvim-ts-autotag'
+
+    use 'mofiqul/vscode.nvim'
 
     use {
         'folke/trouble.nvim',
@@ -544,11 +661,11 @@ local function post_install_setup()
     pcall(function()
         require('fzf-lua').setup({
             winopts = {
-                height = 0.85,
-                width = 0.85,
+                height = 0.75,
+                width = 0.70,
                 row = 0.5,
                 col = 0.5,
-                border = 'rounded',
+                border = "rounded",
             },
             files = {
                 prompt = 'Files❯ ',
@@ -896,7 +1013,7 @@ local function post_install_setup()
             { "<leader>vww",     desc = "Workspace symbol" },
             { "<leader>vd",      desc = "Open diagnostic float" },
             { "<leader>vca",     desc = "Code action" },
-            { "<leader>vr",      desc = "LSP references" },
+            { "<leader>vrr",     desc = "LSP references" },
             { "<leader>vrn",     desc = "LSP rename" },
             --
             -- Busca de arquivos / conteúdo (fzf-lua) + seletor de diretórios
@@ -995,17 +1112,6 @@ local function post_install_setup()
     vim.keymap.set("n", "<leader>vrn", vim.lsp.buf.rename)
     vim.keymap.set("i", "<C-h>", vim.lsp.buf.signature_help)
 
-    -- Neotest
-    vim.keymap.set('n', '<leader>vtn', function() require('neotest').run.run() end,
-        { desc = 'Test: run nearest' })
-    vim.keymap.set('n', '<leader>vtf', function() require('neotest').run.run(vim.fn.expand('%')) end,
-        { desc = 'Test: run file' })
-    vim.keymap.set('n', '<leader>vts', function() require('neotest').summary.toggle() end,
-        { desc = 'Test: toggle summary' })
-    vim.keymap.set('n', '<leader>vto', function() require('neotest').output.open({ enter = true }) end,
-        { desc = 'Test: open output' })
-
-    -- trouble.nvim
     vim.keymap.set('n', '<leader>T', '<cmd>Trouble diagnostics toggle<CR>', { desc = 'Trouble: diagnostics' })
     vim.keymap.set('n', '<leader>lT', '<cmd>Trouble qflist toggle<CR>', { desc = 'Trouble: quickfix' })
 
@@ -1107,22 +1213,17 @@ local function post_install_setup()
     set("n", "<leader><up>", ":resize +10<cr>")
     set("n", "<leader><down>", ":resize -10<cr>")
 
-    set("n", "<Tab>", ":bnext<cr>", kopts)
-    set("n", "<S-Tab>", ":bprevious<cr>", kopts)
-    set("n", "<leader>bd", ":bdelete!<cr>", kopts)
-    set("n", "<leader>bn", "<cmd> enew <cr>", kopts)
-
     set("n", "<leader>ll", "<cmd>PackerStatus<CR>", { desc = "Open Packer status" })
     set("n", "<leader>lm", "<cmd>Mason<CR>", { desc = "Open Mason LSP installer" })
 
     --set("n", "<leader><leader>", function() require("fzf-lua").files({ hidden = true }) end, { desc = "Search Files" })
-    set("n", "<leader>sh", function() require("fzf-lua").help_tags() end, { desc = "Search Help" })
-    set("n", "<leader>sk", function() require("fzf-lua").keymaps() end, { desc = "Search Keymaps" })
-    set("n", "<leader>ss", function() require("fzf-lua").builtin() end, { desc = "Search Select" })
-    set("n", "<leader>sw", function() require("fzf-lua").grep_cword() end, { desc = "Search Word" })
-    set("n", "<leader>sd", function() require("fzf-lua").diagnostics_document() end,
+    set("n", "<leader>ch", function() require("fzf-lua").help_tags() end, { desc = "Search Help" })
+    set("n", "<leader>ck", function() require("fzf-lua").keymaps() end, { desc = "Search Keymaps" })
+    set("n", "<leader>cs", function() require("fzf-lua").builtin() end, { desc = "Search Select" })
+    set("n", "<leader>cw", function() require("fzf-lua").grep_cword() end, { desc = "Search Word" })
+    set("n", "<leader>cd", function() require("fzf-lua").diagnostics_document() end,
         { desc = "Search Diagnostics (buf)" })
-    set("n", "<leader>sD", function() require("fzf-lua").diagnostics_workspace() end,
+    set("n", "<leader>cD", function() require("fzf-lua").diagnostics_workspace() end,
         { desc = "Search Diagnostics (ws)" })
 
     set('n', ';s', '<Plug>(VM-Find-Under)', { remap = true, desc = 'Multi-cursor: find under cursor' })
@@ -1298,6 +1399,7 @@ local function remove_all_italics()
 end
 
 function ColorMyPencils(color)
+    --color = color or "vscode"
     color = color or "alabaster"
     --color = color or "tema"
 
@@ -1324,6 +1426,10 @@ function ColorMyPencils(color)
     vim.api.nvim_set_hl(0, "NormalFloat", { bg = "none" })
     vim.api.nvim_set_hl(0, "LineNr", { fg = "#b5b5b5" })
     vim.api.nvim_set_hl(0, "MsgArea", { bg = "none" })
+    vim.api.nvim_set_hl(0, "TabSep", { fg = "#555555" })
+    vim.api.nvim_set_hl(0, "WinBar", { bg = "none" })
+    vim.api.nvim_set_hl(0, "WinBarNC", { bg = "none" })
+    vim.api.nvim_set_hl(0, "TabLineSel", { bold = true, fg = "#e5c07b" })
 end
 
 ColorMyPencils()
