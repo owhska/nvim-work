@@ -1256,7 +1256,6 @@ local function post_install_setup()
     set("n", "<leader>ll", "<cmd>PackerStatus<CR>", { desc = "Open Packer status" })
     set("n", "<leader>lm", "<cmd>Mason<CR>", { desc = "Open Mason LSP installer" })
 
-    --set("n", "<leader><leader>", function() require("fzf-lua").files({ hidden = true }) end, { desc = "Search Files" })
     set("n", "<leader>ch", function() require("fzf-lua").help_tags() end, { desc = "Search Help" })
     set("n", "<leader>ck", function() require("fzf-lua").keymaps() end, { desc = "Search Keymaps" })
     set("n", "<leader>cs", function() require("fzf-lua").builtin() end, { desc = "Search Select" })
@@ -1269,7 +1268,6 @@ local function post_install_setup()
     set('n', ';s', '<Plug>(VM-Find-Under)', { remap = true, desc = 'Multi-cursor: find under cursor' })
     set('n', ';n', '<Plug>(VM-Add-Cursor-At-Next)', { remap = true, desc = 'Multi-cursor: next occurrence' })
     set('n', ';a', '<Plug>(VM-Select-All)', { remap = true, desc = 'Multi-cursor: select all' })
-    --set('n', ';mp', '<Plug>(VM-Remove-Region)', { remap = true, desc = 'Multi-cursor: remove last region' })
 
     -- vim.keymap.set("n", "<leader>//", function()
     -- local query = vim.fn.input("Google: ")
@@ -1441,7 +1439,6 @@ end
 function ColorMyPencils(color)
     --color = color or "vscode"
     color = color or "alabaster"
-    --color = color or "tema"
 
     local ok = pcall(vim.cmd.colorscheme, color)
     if not ok then
