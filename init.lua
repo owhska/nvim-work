@@ -1481,8 +1481,8 @@ function ColorMyPencils(color)
     vim.api.nvim_set_hl(0, "WinBar", { bg = "none" })
     vim.api.nvim_set_hl(0, "WinBarNC", { bg = "none" })
     vim.api.nvim_set_hl(0, "TabLineSel", { bold = true, fg = "#e5c07b" })
-    vim.api.nvim_set_hl(0, "StatusLine", { fg = "#1e1e1e", bg = "#505050", bold = true })
-    vim.api.nvim_set_hl(0, "StatusLineNC", { fg = "#b5b5b5", bg = "#2a2a2a" })
+    -- vim.api.nvim_set_hl(0, "StatusLine", { fg = "#3d0511", bg = "#505050", bold = true })
+    -- vim.api.nvim_set_hl(0, "StatusLineNC", { fg = "#b5b5b5", bg = "#2a2a2a" })
 end
 
 ColorMyPencils()
