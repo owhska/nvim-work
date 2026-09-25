@@ -31,7 +31,7 @@ local packer_bootstrap = ensure_packer()
 ------------------------------------------------------------
 vim.deprecate = function() end
 --vim.opt.guicursor = "" -- comando que faz com que seja bloco ao inves de linha
-vim.opt.number = true
+--vim.opt.number = true
 vim.opt.tabstop = 4
 vim.opt.shiftwidth = 4
 vim.opt.expandtab = true
@@ -143,7 +143,7 @@ function _G.NvimTabLine()
 
         local hl = i == current and "%#TabLineSel#" or "%#TabLine#"
         -- %iT = aba clicável com o mouse
-        parts[#parts + 1] = "%" .. i .. "T" .. hl .. " " .. i .. ":" .. esc(label) .. " "
+        parts[#parts + 1] = "%" .. i .. "T" .. hl .. " " .. esc(label) .. " "
     end
 
     -- lado direito
@@ -1166,6 +1166,11 @@ local function post_install_setup()
     vim.keymap.set("n", "<leader>vrn", vim.lsp.buf.rename)
     vim.keymap.set("i", "<C-h>", vim.lsp.buf.signature_help)
 
+
+    vim.keymap.set('n', '<leader>-', function()
+        vim.opt.number = not vim.opt.number:get()
+    end, { desc = 'Toggle line numbers' })
+
     vim.keymap.set('n', '<leader>T', '<cmd>Trouble diagnostics toggle<CR>', { desc = 'Trouble: diagnostics' })
     vim.keymap.set('n', '<leader>lT', '<cmd>Trouble qflist toggle<CR>', { desc = 'Trouble: quickfix' })
 
@@ -1259,7 +1264,9 @@ local function post_install_setup()
 
     set("n", "<leader>rr", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]])
 
-    set({ "n", "v" }, "<leader>dd", [["_d]])
+    --set({ "n", "v" }, "<leader>dd", [["_d]])
+    set('n', 'dd', '"_dd')
+    set('v', 'd', '"_d')
     set("x", "p", [["_dP]])
 
     set("n", "<leader><left>", ":vertical resize +20<cr>")
