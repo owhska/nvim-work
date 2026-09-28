@@ -1290,6 +1290,11 @@ local function post_install_setup()
     set('n', ';n', '<Plug>(VM-Add-Cursor-At-Next)', { remap = true, desc = 'Multi-cursor: next occurrence' })
     set('n', ';a', '<Plug>(VM-Select-All)', { remap = true, desc = 'Multi-cursor: select all' })
 
+    -- vim.keymap.set('t', '<C-w>h', [[<C-\><C-n><C-w>h]])
+    -- vim.keymap.set('t', '<C-w>j', [[<C-\><C-n><C-w>j]])
+    -- vim.keymap.set('t', '<C-w>k', [[<C-\><C-n><C-w>k]])
+    -- vim.keymap.set('t', '<C-w>l', [[<C-\><C-n><C-w>l]])
+
     -- vim.keymap.set("n", "<leader>//", function()
     -- local query = vim.fn.input("Google: ")
     --
