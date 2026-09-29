@@ -59,6 +59,18 @@ vim.o.laststatus = 1
 --vim.opt_local.showmode = true
 --vim.opt.number = true
 
+-- Teste do teste
+vim.g.loaded_python3_provider = 0
+vim.g.loaded_ruby_provider = 0
+vim.g.loaded_perl_provider = 0
+vim.g.loaded_node_provider = 0
+
+vim.g.loaded_gzip = 1
+vim.g.loaded_tarPlugin = 1
+vim.g.loaded_zipPlugin = 1
+vim.g.loaded_tohtml = 1
+vim.g.loaded_tutor_mode_plugin = 1
+
 -- Opções de performance teste --
 vim.g.neovide_cursor_animation_length = 0
 vim.g.neovide_scroll_animation_length = 0
@@ -245,20 +257,6 @@ local function web_search()
     if query == "" then
         return
     end
-
-    local encoded = vim.fn.system({
-        "curl",
-        "-sG",
-        "--data-urlencode",
-        "q=" .. query,
-        "-o",
-        "/dev/null",
-        "-w",
-        "%{url_effective}",
-        "https://html.duckduckgo.com/html/",
-    })
-
-    encoded = encoded:gsub("\n$", "")
 
     local buf = vim.api.nvim_create_buf(false, true)
 
@@ -739,24 +737,59 @@ end)
 local function post_install_setup()
     setup_dashboard()
 
-    pcall(function()
-        require('fzf-lua').setup({
-            winopts = {
-                height = 0.75,
-                width = 0.70,
-                row = 0.5,
-                col = 0.5,
-                border = "rounded",
-            },
-            files = {
-                prompt = 'Files❯ ',
-            },
-            grep = {
-                prompt = 'Grep❯ ',
-            },
-        })
-    end)
+    -- pcall(function()
+    -- require('fzf-lua').setup({
+    -- winopts = {
+    -- height = 0.75,
+    -- width = 0.70,
+    -- row = 0.5,
+    -- col = 0.5,
+    -- border = "rounded",
+    -- },
+    -- files = {
+    -- prompt = 'Files❯ ',
+    -- },
+    -- grep = {
+    -- prompt = 'Grep❯ ',
+    -- },
+    -- })
+    -- end)
 
+    require('fzf-lua').setup({
+        winopts = {
+            height = 0.75,
+            width = 0.70,
+            row = 0.5,
+            col = 0.5,
+            border = "rounded",
+            preview = { delay = 150 }, -- não gera preview a cada tecla
+        },
+        previewers = {
+            builtin = {
+                syntax_limit_b = 1024 * 100, -- sem highlight em arquivos > 100 KB
+            },
+        },
+        files = {
+            prompt = 'Files❯ ',
+            file_icons = true,
+            git_icons = false, -- o status do git por arquivo roda `git status` a cada busca
+            -- find sem descer em pastas pesadas (-prune); %P remove o "./" do começo
+            cmd = "find . \\( -name .git -o -name node_modules -o -name dist -o -name build"
+                .. " -o -name __pycache__ -o -name .venv -o -name .cache \\) -prune"
+                .. " -o -type f -printf '%P\\n'",
+        },
+        grep = {
+            prompt = 'Grep❯ ',
+            file_icons = true,
+            git_icons = false,
+            -- grep ignorando as mesmas pastas
+            grep_opts = "--binary-files=without-match --line-number --recursive --color=auto"
+                .. " --perl-regexp"
+                .. " --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist"
+                .. " --exclude-dir=build --exclude-dir=__pycache__ --exclude-dir=.venv"
+                .. " --exclude-dir=.cache -e",
+        },
+    })
     pcall(function()
         require("mason").setup()
     end)
