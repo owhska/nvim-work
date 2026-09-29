@@ -1227,6 +1227,8 @@ local function post_install_setup()
             { "<leader>lT",      desc = "Trouble: quickfix" },
             -- Comment toggle (modo visual)
             { "<leader>m",       desc = "Toggle comment",              mode = "v" },
+            -- Change binds
+            { "<leader>cb",      desc = "Change keybinds" },
         })
     end)
 
@@ -1428,6 +1430,7 @@ local function post_install_setup()
         { desc = "Search Diagnostics (buf)" })
     set("n", "<leader>cD", function() require("fzf-lua").diagnostics_workspace() end,
         { desc = "Search Diagnostics (ws)" })
+    set("n", "<leader>cb", function() require("keybinds").open() end, { desc = "Change keybinds" })
 
     set('n', ';s', '<Plug>(VM-Find-Under)', { remap = true, desc = 'Multi-cursor: find under cursor' })
     set('n', ';n', '<Plug>(VM-Add-Cursor-At-Next)', { remap = true, desc = 'Multi-cursor: next occurrence' })
