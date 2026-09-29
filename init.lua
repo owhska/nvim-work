@@ -251,6 +251,15 @@ vim.api.nvim_create_autocmd("FileType", {
 -- endfunction
 -- ]])
 
+local function ts_disable(_, buf)
+    local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
+    if not (ok and stats) then return false end
+
+    local lines = vim.api.nvim_buf_line_count(buf)
+
+    return stats.size > 5 * 1024 * 1024 or (stats.size / math.max(lines, 1)) > 1000
+end
+
 local function web_search()
     local query = vim.fn.input("Search: ")
 
@@ -671,8 +680,6 @@ require('packer').startup(function(use)
         'williamboman/mason.nvim',
         tag = 'v1.10.0',
     }
-    use { 'tahayvr/matteblack.nvim', as = 'matteblack' }
-    use 'xero/miasma.nvim'
     use {
         'nvim-treesitter/nvim-treesitter',
         run = function()
@@ -699,7 +706,6 @@ require('packer').startup(function(use)
 
     use 'dchinmay2/alabaster.nvim'
 
-    use 'martinsione/darkplus.nvim'
 
     use 'mg979/vim-visual-multi'
 
@@ -720,8 +726,6 @@ require('packer').startup(function(use)
         'folke/trouble.nvim',
         requires = { 'nvim-tree/nvim-web-devicons' },
     }
-
-    use "flaviodelgrosso/min-theme.nvim"
 
     use {
         'williamboman/mason-lspconfig.nvim',
@@ -1520,6 +1524,7 @@ local function post_install_setup()
     vim.keymap.set("n", "<leader>x", function()
         open_dir_picker(true)
     end, { desc = "Open directory (new tab)" })
+
     pcall(function()
         require('nvim-treesitter.configs').setup({
             ensure_installed = {
@@ -1536,14 +1541,16 @@ local function post_install_setup()
                 "elixir",
                 "python",
             },
-            sync_install = true,
-            auto_install = true,
             highlight = {
                 enable = true,
+                disable = ts_disable,
             },
             indent = {
                 enable = true,
+                disable = ts_disable,
             },
+            sync_install = true,
+            auto_install = true,
         })
     end)
 end
