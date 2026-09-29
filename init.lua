@@ -30,7 +30,7 @@ local packer_bootstrap = ensure_packer()
 -- OPÇÕES BÁSICAS
 ------------------------------------------------------------
 vim.deprecate = function() end
---vim.opt.guicursor = "" -- comando que faz com que seja bloco ao inves de linha
+vim.opt.guicursor = "" -- comando que faz com que seja bloco ao inves de linha
 --vim.opt.number = true
 vim.opt.tabstop = 4
 vim.opt.shiftwidth = 4
@@ -55,6 +55,17 @@ vim.o.laststatus = 0
 vim.opt.ruler = false
 --vim.opt.cursorline = true
 vim.o.laststatus = 1
+
+-- Opções de performance teste --
+vim.g.neovide_cursor_animation_length = 0
+vim.g.neovide_scroll_animation_length = 0
+vim.g.neovide_position_animation_length = 0
+vim.g.neovide_cursor_vfx_mode = ""
+vim.opt.winblend = 0
+vim.opt.pumblend = 0
+vim.opt.smoothscroll = false
+vim.opt.relativenumber = false
+
 
 function _G.StatusName()
     if vim.bo.buftype == "terminal" then return "term" end
@@ -910,8 +921,87 @@ local function post_install_setup()
         vim.keymap.set("n", "<leader>4", function() ui.nav_file(4) end)
     end)
 
+    -- pcall(function()
+    -- require('nvim-tree').setup({
+    -- disable_netrw = false,
+    -- hijack_netrw = false,
+    -- hijack_directories = {
+    -- enable = false,
+    -- },
+    -- view = {
+    -- width = 50,
+    -- side = 'left',
+    -- },
+    -- filters = {
+    -- dotfiles = false,
+    -- },
+    -- update_focused_file = {
+    -- enable = true,
+    -- },
+    -- })
+    -- end)
+
     pcall(function()
+        local api = require("nvim-tree.api")
+
+        -- janelas de edição da aba atual (ignora tree, flutuantes, terminal etc.)
+        local function editor_wins()
+            local wins = {}
+            for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+                local buf = vim.api.nvim_win_get_buf(w)
+                if vim.api.nvim_win_get_config(w).relative == ""
+                    and vim.bo[buf].filetype ~= "NvimTree"
+                    and vim.bo[buf].buftype == "" then
+                    table.insert(wins, w)
+                end
+            end
+            return wins
+        end
+
+        local function open_keep_tree()
+            local node = api.tree.get_node_under_cursor()
+            if not node then return end
+
+            -- pasta: só expande/colapsa
+            if node.nodes then
+                api.node.open.edit()
+                return
+            end
+
+            local wins = editor_wins()
+            local first = #wins == 0
+                or (#wins == 1
+                    and vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(wins[1])) == ""
+                    and not vim.bo[vim.api.nvim_win_get_buf(wins[1])].modified)
+
+            if first then
+                -- primeiro arquivo: abre normalmente
+                api.node.open.edit()
+            else
+                -- a partir do segundo: split à direita da janela mais à direita
+                table.sort(wins, function(a, b)
+                    return vim.api.nvim_win_get_position(a)[2] > vim.api.nvim_win_get_position(b)[2]
+                end)
+                vim.api.nvim_set_current_win(wins[1])
+                vim.cmd("rightbelow vsplit " .. vim.fn.fnameescape(node.absolute_path))
+            end
+
+            api.tree.focus()
+        end
+
+        local function on_attach(bufnr)
+            api.config.mappings.default_on_attach(bufnr)
+
+            local function opts(desc)
+                return { desc = "nvim-tree: " .. desc, buffer = bufnr, noremap = true, silent = true, nowait = true }
+            end
+
+            vim.keymap.set("n", "<CR>", open_keep_tree, opts("Open (1st normal, then right split)"))
+            vim.keymap.set("n", "<2-LeftMouse>", open_keep_tree, opts("Open (mouse)"))
+        end
+
         require('nvim-tree').setup({
+            on_attach = on_attach,
             disable_netrw = false,
             hijack_netrw = false,
             hijack_directories = {
@@ -922,7 +1012,7 @@ local function post_install_setup()
                 side = 'left',
             },
             filters = {
-                dotfiles = false,
+                dotfiles = true,
             },
             update_focused_file = {
                 enable = true,
