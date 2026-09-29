@@ -562,6 +562,309 @@ end
 
 setup_autopairs()
 
+------------------------------------------------------------
+-- KEYBIND CHANGER (<leader>cb)
+------------------------------------------------------------
+local keybinds = (function()
+    local M = {}
+
+    local backed_up = false
+
+    -- structural binds (autopairs) that must not be changed
+    local PROTECTED = { ["i|<BS>"] = true, ["i|<CR>"] = true }
+
+    local function config_path()
+        local p = vim.env.MYVIMRC
+        if not p or p == "" then
+            p = vim.fn.stdpath("config") .. "/init.lua"
+        end
+        return vim.uv.fs_realpath(p) or p
+    end
+
+    local function expand(lhs)
+        local leader = vim.g.mapleader or "\\"
+        if leader == " " then leader = "<Space>" end
+        return (lhs:gsub("<[Ll]eader>", leader))
+    end
+
+    -- recognizes: vim.keymap.set(mode, "lhs", ...) and set(mode, "lhs", ...)
+    -- returns modes, lhs and the position of the lhs literal in the line
+    local function parse_set(line)
+        local s, e = line:find("^%s*vim%.keymap%.set%(")
+        if not s then s, e = line:find("^%s*set%(") end
+        if not s then return end
+        local pos = e + 1
+
+        local modes = {}
+        local ms, me = line:find("^%s*%b{}", pos)
+        if ms then
+            for m in line:sub(ms, me):gmatch("[\"'](%a*)[\"']") do
+                modes[#modes + 1] = m
+            end
+        else
+            local m
+            ms, me, m = line:find("^%s*[\"'](%a*)[\"']", pos)
+            if not ms then return end
+            modes = { m }
+        end
+
+        local cs, ce = line:find("^%s*,%s*", me + 1)
+        if not cs then return end
+
+        local ls, le, _, lhs = line:find("^([\"'])(.-)%1", ce + 1)
+        if not ls then return end
+
+        return modes, lhs, ls, le
+    end
+
+    -- full text of the call (until the parentheses close)
+    local function statement(lines, i)
+        local buf, depth = {}, 0
+        for j = i, math.min(i + 60, #lines) do
+            local l = lines[j]
+            buf[#buf + 1] = l
+            local _, o = l:gsub("%(", "")
+            local _, c = l:gsub("%)", "")
+            depth = depth + o - c
+            if depth <= 0 then break end
+        end
+        return table.concat(buf, "\n")
+    end
+
+    local function collect(lines)
+        -- which-key entries: { "<leader>x", desc = "...", mode = "v" }
+        local wk = {}
+        for i, line in ipairs(lines) do
+            if not line:match("^%s*%-%-") then
+                local lhs, rest = line:match('^%s*{%s*"([^"]+)"%s*,%s*(.*)$')
+                if lhs and not rest:match("group%s*=") then
+                    local desc = rest:match('desc%s*=%s*"([^"]*)"')
+                    if desc then
+                        wk[#wk + 1] = {
+                            lnum = i,
+                            lhs = lhs,
+                            desc = desc,
+                            mode = rest:match('mode%s*=%s*"(%a+)"') or "n",
+                        }
+                    end
+                end
+            end
+        end
+
+        local binds = {}
+        for i, line in ipairs(lines) do
+            if not line:match("^%s*%-%-") then
+                local modes, lhs, ls, le = parse_set(line)
+                if modes and #modes > 0 then
+                    local key = table.concat(modes, ",") .. "|" .. lhs
+                    local stmt = statement(lines, i)
+
+                    -- skip buffer-local binds (dashboard, search popup, nvim-tree)
+                    local buffer_local = stmt:find("buffer%s*=")
+                        or stmt:find("[%s,]opts%(")
+                        or stmt:find("[%s,]opts%)%s*$")
+
+                    if not buffer_local and not PROTECTED[key] then
+                        local desc = stmt:match('desc%s*=%s*"([^"]*)"')
+                            or stmt:match("desc%s*=%s*'([^']*)'")
+                        if not desc then
+                            for _, w in ipairs(wk) do
+                                if w.lhs == lhs and vim.tbl_contains(modes, w.mode) then
+                                    desc = w.desc
+                                    break
+                                end
+                            end
+                        end
+
+                        binds[#binds + 1] = {
+                            key = key,
+                            lnum = i,
+                            modes = modes,
+                            lhs = lhs,
+                            ls = ls,
+                            le = le,
+                            desc = desc or "(no description)",
+                        }
+                    end
+                end
+            end
+        end
+
+        return binds, wk
+    end
+
+    local function find_global(mode, lhs)
+        local want = vim.keycode(expand(lhs))
+        for _, k in ipairs(vim.api.nvim_get_keymap(mode)) do
+            if vim.keycode(k.lhs) == want then return k end
+        end
+    end
+
+    -- rewrites init.lua: the keymap line and the which-key entries
+    local function apply_to_file(bind, new)
+        local path = config_path()
+
+        local nr = vim.fn.bufnr(path)
+        if nr ~= -1 and vim.bo[nr].modified then
+            return false, "init.lua has unsaved changes. Save it (:w) and try again."
+        end
+
+        local lines = vim.fn.readfile(path)
+        local binds, wk = collect(lines)
+
+        local target
+        for _, b in ipairs(binds) do
+            if b.key == bind.key then
+                target = b
+                break
+            end
+        end
+        if not target then
+            return false, "Keybind not found in the file (did it change?)."
+        end
+
+        local line = lines[target.lnum]
+        local q = line:sub(target.ls, target.ls)
+        lines[target.lnum] = line:sub(1, target.ls - 1) .. q .. new .. q .. line:sub(target.le + 1)
+
+        for _, w in ipairs(wk) do
+            if w.lhs == bind.lhs and vim.tbl_contains(target.modes, w.mode) then
+                local l = lines[w.lnum]
+                local s, e = l:find('"' .. w.lhs .. '"', 1, true)
+                if s then
+                    local tail = l:sub(e + 1)
+                    local sp = tail:match("^,(%s*)")
+                    if sp then -- keeps the desc column aligned
+                        local pad = math.max(1, #sp - (#new - #w.lhs))
+                        tail = "," .. string.rep(" ", pad) .. tail:sub(#sp + 2)
+                    end
+                    lines[w.lnum] = l:sub(1, s - 1) .. '"' .. new .. '"' .. tail
+                end
+            end
+        end
+
+        if not backed_up then
+            vim.fn.writefile(vim.fn.readfile(path), path .. ".bak")
+            backed_up = true
+        end
+        vim.fn.writefile(lines, path)
+        vim.cmd("checktime")
+        return true
+    end
+
+    -- applies to the current session (no restart) and updates which-key
+    local function apply_live(bind, new)
+        for _, mode in ipairs(bind.modes) do
+            local k = find_global(mode, bind.lhs)
+            if k then
+                pcall(vim.keymap.del, mode, expand(bind.lhs))
+                vim.keymap.set(mode, new, k.callback or k.rhs or "", {
+                    silent = k.silent == 1,
+                    expr = k.expr == 1,
+                    nowait = k.nowait == 1,
+                    remap = k.noremap == 0,
+                    desc = k.desc,
+                })
+            end
+        end
+
+        local ok, wk = pcall(require, "which-key")
+        if ok then
+            local spec = {}
+            for _, mode in ipairs(bind.modes) do
+                spec[#spec + 1] = { bind.lhs, hidden = true, mode = mode }
+                spec[#spec + 1] = { new, desc = bind.desc, mode = mode }
+            end
+            pcall(wk.add, spec)
+        end
+    end
+
+    function M.change(bind, binds)
+        vim.ui.input({
+            prompt = ("New key for '%s' (current: %s): "):format(bind.desc, bind.lhs),
+            default = bind.lhs,
+        }, function(new)
+            if not new then return end
+            new = vim.trim(new)
+            if new == "" or new == bind.lhs then return end
+
+            if new:find("[\"'\\%c]") then
+                vim.notify("Invalid key (quotes, backslashes and control characters are not allowed).",
+                    vim.log.levels.ERROR)
+                return
+            end
+
+            -- conflict with another bind in the file itself
+            for _, b in ipairs(binds) do
+                if b.key ~= bind.key and b.lhs == new then
+                    for _, m in ipairs(b.modes) do
+                        if vim.tbl_contains(bind.modes, m) then
+                            vim.notify(("'%s' is already used by: %s. Change that one first."):format(new, b.desc),
+                                vim.log.levels.ERROR)
+                            return
+                        end
+                    end
+                end
+            end
+
+            -- conflict with an existing mapping (plugin or built-in)
+            for _, mode in ipairs(bind.modes) do
+                local k = find_global(mode, new)
+                if k then
+                    local what = k.desc or k.rhs or "Lua function"
+                    local ans = vim.fn.confirm(
+                        ("'%s' is already mapped (%s) in mode %s. Overwrite?"):format(new, what, mode),
+                        "&Yes\n&No", 2)
+                    if ans ~= 1 then return end
+                    break
+                end
+            end
+
+            local ok, err = apply_to_file(bind, new)
+            if not ok then
+                vim.notify(err, vim.log.levels.ERROR)
+                return
+            end
+
+            apply_live(bind, new)
+            vim.notify(("Keybind changed: %s → %s  (%s)"):format(bind.lhs, new, bind.desc))
+
+            -- reopen the updated popup to change others in sequence
+            vim.schedule(M.open)
+        end)
+    end
+
+    function M.open()
+        local binds = collect(vim.fn.readfile(config_path()))
+
+        local entries = {}
+        for _, b in ipairs(binds) do
+            entries[#entries + 1] = string.format(
+                "%-24s %-7s %s  :%d", b.lhs, table.concat(b.modes, ","), b.desc, b.lnum)
+        end
+
+        require("fzf-lua").fzf_exec(entries, {
+            prompt = "Binds> ",
+            winopts = { title = " Enter: change the key ", title_pos = "center" },
+            actions = {
+                ["default"] = function(selected)
+                    local sel = selected and selected[1]
+                    if not sel then return end
+                    local lnum = tonumber(sel:match(":(%d+)%s*$"))
+                    for _, b in ipairs(binds) do
+                        if b.lnum == lnum then
+                            vim.schedule(function() M.change(b, binds) end)
+                            return
+                        end
+                    end
+                end,
+            },
+        })
+    end
+
+    return M
+end)()
+
 local function setup_dashboard()
     vim.api.nvim_create_autocmd("VimEnter", {
         group = vim.api.nvim_create_augroup("Dashboard", { clear = true }),
@@ -1430,7 +1733,7 @@ local function post_install_setup()
         { desc = "Search Diagnostics (buf)" })
     set("n", "<leader>cD", function() require("fzf-lua").diagnostics_workspace() end,
         { desc = "Search Diagnostics (ws)" })
-    set("n", "<leader>cb", function() require("keybinds").open() end, { desc = "Change keybinds" })
+    set("n", "<leader>cb", function() keybinds.open() end, { desc = "Change keybinds" })
 
     set('n', ';s', '<Plug>(VM-Find-Under)', { remap = true, desc = 'Multi-cursor: find under cursor' })
     set('n', ';n', '<Plug>(VM-Add-Cursor-At-Next)', { remap = true, desc = 'Multi-cursor: next occurrence' })
