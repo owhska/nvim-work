@@ -30,8 +30,7 @@ local packer_bootstrap = ensure_packer()
 -- OPÇÕES BÁSICAS
 ------------------------------------------------------------
 vim.deprecate = function() end
-vim.opt.guicursor = "" -- comando que faz com que seja bloco ao inves de linha
---vim.opt.number = true
+vim.opt.guicursor = ""
 vim.opt.tabstop = 4
 vim.opt.shiftwidth = 4
 vim.opt.expandtab = true
@@ -40,21 +39,25 @@ vim.g.mapleader = " "
 vim.opt.mouse = "a"
 vim.opt.clipboard = "unnamedplus"
 vim.opt_local.ruler = false
---vim.opt_local.showmode = true
 vim.opt.swapfile = false
 vim.opt.backup = false
 vim.opt.timeoutlen = 300
 vim.opt.updatetime = 50
 vim.g.netrw_banner = 0
 vim.g.netrw_liststyle = 0
---vim.o.statusline = " [FILENAME: %t] %= [TYPE: %Y] [LINE: %l/%L : %c] [%p%%] %{Modified_Get()}"
---vim.o.laststatus = 2
 vim.o.shortmess = vim.o.shortmess .. "atI"
 vim.o.cmdheight = 1
 vim.o.laststatus = 0
 vim.opt.ruler = false
---vim.opt.cursorline = true
 vim.o.laststatus = 1
+
+
+-- Opções de desabilitadas teste --
+--vim.opt.cursorline = true
+--vim.o.laststatus = 2
+--vim.o.statusline = " [FILENAME: %t] %= [TYPE: %Y] [LINE: %l/%L : %c] [%p%%] %{Modified_Get()}"
+--vim.opt_local.showmode = true
+--vim.opt.number = true
 
 -- Opções de performance teste --
 vim.g.neovide_cursor_animation_length = 0
@@ -65,7 +68,20 @@ vim.opt.winblend = 0
 vim.opt.pumblend = 0
 vim.opt.smoothscroll = false
 vim.opt.relativenumber = false
-
+vim.g.neovide_animate_command_line = false
+vim.g.neovide_cursor_animate_in_insert_mode = false
+vim.g.neovide_cursor_animate_command_line = false
+vim.g.neovide_cursor_trail_size = 0
+vim.g.neovide_cursor_smooth_blink = false
+vim.g.neovide_scroll_animation_far_lines = 0
+vim.g.neovide_floating_blur_amount_x = 0
+vim.g.neovide_floating_blur_amount_y = 0
+vim.g.neovide_floating_shadow = false
+vim.g.neovide_opacity = 1.0
+vim.g.neovide_window_blurred = false
+vim.g.neovide_refresh_rate = 60
+vim.g.neovide_refresh_rate_idle = 5
+vim.g.neovide_no_idle = false
 
 function _G.StatusName()
     if vim.bo.buftype == "terminal" then return "term" end
@@ -1398,74 +1414,46 @@ local function post_install_setup()
     -- end
     -- end, { desc = "Pesquisar no Google" })
 
-    local dirs_cache
     local ignored = {
-        [".git"] = true,
-        ["node_modules"] = true,
-        ["dist"] = true,
-        ["build"] = true,
-        [".cache"] = true,
-        [".npm"] = true,
-        [".cargo"] = true,
-        [".rustup"] = true,
+        ".git", "node_modules", "dist", "build",
+        ".cache", ".npm", ".cargo", ".rustup",
     }
 
-    local function scan_dirs(root, include_hidden)
-        local result = {}
-        local stack = { root }
+    local function dirs_cmd()
+        local home = vim.env.HOME
+        local extra_roots = { home .. "/.config", home .. "/.local/bin" }
+        local q = vim.fn.shellescape
 
-        while #stack > 0 do
-            local path = stack[#stack]
-            stack[#stack] = nil
+        -- "-name a -o -name b -o ..." com as pastas ignoradas
+        local names = {}
+        for _, n in ipairs(ignored) do
+            names[#names + 1] = "-name " .. q(n)
+        end
+        local ignored_expr = table.concat(names, " -o ")
 
-            local handle = vim.uv.fs_scandir(path)
+        -- $HOME: não entra em ocultos nem nas pastas ignoradas (-prune corta a descida)
+        local parts = {
+            string.format(
+                "find %s -mindepth 1 \\( -name '.*' -o %s \\) -prune -o -type d -print",
+                q(home), ignored_expr
+            ),
+        }
 
-            if handle then
-                while true do
-                    local name, type = vim.uv.fs_scandir_next(handle)
-
-                    if not name then
-                        break
-                    end
-
-                    if type == "directory" then
-                        local hidden = name:byte(1) == 46
-
-                        if (include_hidden or not hidden) and not ignored[name] then
-                            local dir = path .. "/" .. name
-
-                            result[#result + 1] = dir
-                            stack[#stack + 1] = dir
-                        end
-                    end
-                end
+        -- raízes extras: entram em ocultos; a própria raiz também é listada
+        for _, root in ipairs(extra_roots) do
+            if vim.uv.fs_stat(root) then
+                parts[#parts + 1] = string.format(
+                    "find %s \\( %s \\) -prune -o -type d -print",
+                    q(root), ignored_expr
+                )
             end
         end
 
-        return result
+        return "{ " .. table.concat(parts, "; ") .. "; } 2>/dev/null | sort"
     end
 
     local function open_dir_picker(new_tab)
-        if not dirs_cache then
-            local home = vim.env.HOME
-            local config = home .. "/.config"
-
-            dirs_cache = scan_dirs(home, false)
-
-            if vim.uv.fs_stat(config) then
-                dirs_cache[#dirs_cache + 1] = config
-
-                local config_dirs = scan_dirs(config, true)
-
-                for i = 1, #config_dirs do
-                    dirs_cache[#dirs_cache + 1] = config_dirs[i]
-                end
-            end
-
-            table.sort(dirs_cache)
-        end
-
-        require("fzf-lua").fzf_exec(dirs_cache, {
+        require("fzf-lua").fzf_exec(dirs_cmd(), {
             prompt = "Dirs> ",
             fzf_opts = {
                 ["--height"] = "100%",
@@ -1474,14 +1462,10 @@ local function post_install_setup()
                 ["--margin"] = "0",
                 ["--padding"] = "0",
             },
-
             actions = {
                 ["default"] = function(selected)
                     local dir = selected[1]
-
-                    if not dir or dir == "" then
-                        return
-                    end
+                    if not dir or dir == "" then return end
 
                     if new_tab then
                         vim.cmd("tabnew")
@@ -1503,7 +1487,6 @@ local function post_install_setup()
     vim.keymap.set("n", "<leader>x", function()
         open_dir_picker(true)
     end, { desc = "Open directory (new tab)" })
-
     pcall(function()
         require('nvim-treesitter.configs').setup({
             ensure_installed = {
