@@ -49,6 +49,7 @@ vim.o.cmdheight = 1
 vim.o.laststatus = 0
 vim.opt.ruler = false
 vim.o.laststatus = 1
+vim.opt.autoread = true
 
 vim.keymap.set('n', 'q', '<Nop>')
 
@@ -94,6 +95,60 @@ vim.g.neovide_window_blurred = false
 vim.g.neovide_refresh_rate = 60
 vim.g.neovide_refresh_rate_idle = 5
 vim.g.neovide_no_idle = false
+
+local watchers = {}
+
+local function unwatch(buf)
+    local w = watchers[buf]
+    if not w then return end
+    watchers[buf] = nil
+    w:stop()
+    if not w:is_closing() then w:close() end
+end
+
+local watch
+
+watch = function(buf)
+    if watchers[buf] or not vim.api.nvim_buf_is_valid(buf) then return end
+    if vim.bo[buf].buftype ~= "" then return end
+
+    local name = vim.api.nvim_buf_get_name(buf)
+    if name == "" or not vim.uv.fs_stat(name) then return end
+
+    local w = vim.uv.new_fs_event()
+    if not w then return end
+
+    local ok = w:start(name, {}, vim.schedule_wrap(function()
+        if vim.api.nvim_buf_is_valid(buf) then
+            vim.cmd("silent! checktime " .. buf)
+        end
+        unwatch(buf)
+        watch(buf)
+    end))
+
+    if not ok then
+        w:close()
+        return
+    end
+    watchers[buf] = w
+end
+
+local reload_group = vim.api.nvim_create_augroup("AutoReload", { clear = true })
+
+vim.api.nvim_create_autocmd({ "BufReadPost", "BufEnter" }, {
+    group = reload_group,
+    callback = function(a) watch(a.buf) end,
+})
+
+vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
+    group = reload_group,
+    callback = function(a) unwatch(a.buf) end,
+})
+
+vim.api.nvim_create_autocmd("FocusGained", {
+    group = reload_group,
+    callback = function() vim.cmd("silent! checktime") end,
+})
 
 function _G.StatusName()
     if vim.bo.buftype == "terminal" then return "term" end
@@ -2157,8 +2212,608 @@ local function dark()
     hl(0, 'TabLineFill', { fg = '#d4d4d4', bg = '#252526' })
 end
 
+local function theme()
+    local hl = vim.api.nvim_set_hl
+
+    local c = {
+        bg      = '#000000',
+        fg      = '#d0d4da',
+        dim     = '#6b7280',
+        keyword = '#ff7a93', -- rosa-coral: keywords e fluxo de controle
+        func    = '#ffd479', -- amarelo suave: funções (maior destaque)
+        string  = '#9ece6a', -- verde-oliva claro: strings
+        type    = '#7dcfff', -- azul-céu: tipos e estruturas
+        const   = '#bb9af7', -- lavanda: números, booleanos, constantes
+        comment = '#7c8798', -- cinza azulado: comentários discretos
+        special = '#ff9e64', -- laranja: escapes e especiais
+        error   = '#ff5370',
+        warn    = '#ffd479',
+        info    = '#7dcfff',
+        sel     = '#2a2f45',
+        line    = '#101114',
+    }
+
+    -- Base / UI
+    hl(0, 'Normal', { fg = c.fg, bg = c.bg })
+    hl(0, 'NormalFloat', { fg = c.fg, bg = '#0a0a0c' })
+    hl(0, 'FloatBorder', { fg = '#3a3f4b', bg = '#0a0a0c' })
+    hl(0, 'SignColumn', { bg = c.bg })
+    hl(0, 'LineNr', { fg = '#4b5160', bg = c.bg })
+    hl(0, 'CursorLine', { bg = c.line })
+    hl(0, 'CursorLineNr', { fg = c.func, bg = c.bg, bold = true })
+    hl(0, 'NonText', { fg = '#2a2d35', bg = c.bg })
+    hl(0, 'SpecialKey', { fg = '#2a2d35', bg = c.bg })
+    hl(0, 'EndOfBuffer', { fg = c.bg, bg = c.bg })
+    hl(0, 'ColorColumn', { bg = c.line })
+    hl(0, 'StatusLine', { fg = '#ffffff', bg = '#1a1c22' })
+    hl(0, 'StatusLineNC', { fg = c.dim, bg = '#0a0a0c' })
+    hl(0, 'VertSplit', { fg = '#2f333d', bg = c.bg })
+    hl(0, 'WinSeparator', { fg = '#2f333d', bg = c.bg })
+    hl(0, 'Visual', { bg = c.sel })
+    hl(0, 'Search', { fg = '#000000', bg = '#e0b85a' })
+    hl(0, 'IncSearch', { fg = '#000000', bg = c.special, bold = true })
+    hl(0, 'MatchParen', { fg = c.func, bg = '#2a2d35', bold = true })
+    hl(0, 'Pmenu', { fg = c.fg, bg = '#101114' })
+    hl(0, 'PmenuSel', { fg = '#ffffff', bg = c.sel, bold = true })
+    hl(0, 'PmenuSbar', { bg = '#1a1c22' })
+    hl(0, 'PmenuThumb', { bg = '#3f4452' })
+    hl(0, 'Folded', { fg = c.dim, bg = c.line })
+    hl(0, 'Title', { fg = c.type, bold = true })
+    hl(0, 'Directory', { fg = c.type })
+    hl(0, 'TabLine', { fg = c.dim, bg = '#0a0a0c' })
+    hl(0, 'TabLineSel', { fg = '#ffffff', bg = '#1a1c22', bold = true })
+    hl(0, 'TabLineFill', { fg = c.fg, bg = '#0a0a0c' })
+
+    -- Sintaxe
+    hl(0, 'Comment', { fg = c.comment })
+    hl(0, 'Constant', { fg = c.const })
+    hl(0, 'String', { fg = c.string })
+    hl(0, 'Character', { fg = c.string })
+    hl(0, 'Number', { fg = c.const })
+    hl(0, 'Float', { fg = c.const })
+    hl(0, 'Boolean', { fg = c.const })
+    hl(0, 'Identifier', { fg = c.fg })
+    hl(0, 'Function', { fg = c.func })
+    hl(0, 'Statement', { fg = c.keyword })
+    hl(0, 'Conditional', { fg = c.keyword })
+    hl(0, 'Repeat', { fg = c.keyword })
+    hl(0, 'Exception', { fg = c.keyword })
+    hl(0, 'Keyword', { fg = c.keyword })
+    hl(0, 'Include', { fg = c.keyword })
+    hl(0, 'PreProc', { fg = c.keyword })
+    hl(0, 'Macro', { fg = c.keyword })
+    hl(0, 'Operator', { fg = c.fg })
+    hl(0, 'Delimiter', { fg = '#8a919e' })
+    hl(0, 'Type', { fg = c.type })
+    hl(0, 'StorageClass', { fg = c.keyword })
+    hl(0, 'Structure', { fg = c.type })
+    hl(0, 'Special', { fg = c.special })
+    hl(0, 'Error', { fg = c.error, bold = true })
+    hl(0, 'Todo', { fg = '#000000', bg = c.warn, bold = true })
+
+    -- Diagnósticos
+    hl(0, 'DiagnosticError', { fg = c.error })
+    hl(0, 'DiagnosticWarn', { fg = c.warn })
+    hl(0, 'DiagnosticInfo', { fg = c.info })
+    hl(0, 'DiagnosticHint', { fg = c.string })
+    hl(0, 'DiagnosticUnderlineError', { undercurl = true, sp = c.error })
+    hl(0, 'DiagnosticUnderlineWarn', { undercurl = true, sp = c.warn })
+
+    -- Diff
+    hl(0, 'DiffAdd', { bg = '#10261a' })
+    hl(0, 'DiffDelete', { fg = '#7a2a35', bg = '#2a0f14' })
+    hl(0, 'DiffChange', { bg = '#151f2e' })
+    hl(0, 'DiffText', { bg = '#26395a', bold = true })
+end
+
+local function gruber()
+    local hl = vim.api.nvim_set_hl
+
+    local c = {
+        bg      = '#000000',
+        fg      = '#e4e4ef', -- fg original do Gruber
+        dim     = '#6c6468',
+        keyword = '#ffdd33', -- amarelo: keywords e fluxo de controle
+        func    = '#96a6c8', -- niagara: funções
+        string  = '#73c936', -- verde: strings
+        type    = '#8fc0ae', -- quartz esverdeado: tipos e estruturas
+        const   = '#9e95c7', -- wisteria: números, booleanos, constantes
+        comment = '#cc8c3c', -- marrom: comentários
+        special = '#e8636b', -- vermelho suave: escapes e especiais
+        error   = '#f43841',
+        warn    = '#ffdd33',
+        info    = '#96a6c8',
+        sel     = '#303540', -- niagara-2
+        line    = '#161616',
+    }
+
+    -- Base / UI
+    hl(0, 'Normal', { fg = c.fg, bg = c.bg })
+    hl(0, 'NormalFloat', { fg = c.fg, bg = '#0c0c0c' })
+    hl(0, 'FloatBorder', { fg = '#484848', bg = '#0c0c0c' })
+    hl(0, 'SignColumn', { bg = c.bg })
+    hl(0, 'LineNr', { fg = '#52494e', bg = c.bg })
+    hl(0, 'CursorLine', { bg = c.line })
+    hl(0, 'CursorLineNr', { fg = c.keyword, bg = c.bg, bold = true })
+    hl(0, 'NonText', { fg = '#2a2a2a', bg = c.bg })
+    hl(0, 'SpecialKey', { fg = '#2a2a2a', bg = c.bg })
+    hl(0, 'EndOfBuffer', { fg = c.bg, bg = c.bg })
+    hl(0, 'ColorColumn', { bg = c.line })
+    hl(0, 'StatusLine', { fg = '#f4f4ff', bg = '#232323' })
+    hl(0, 'StatusLineNC', { fg = c.dim, bg = '#0c0c0c' })
+    hl(0, 'VertSplit', { fg = '#303030', bg = c.bg })
+    hl(0, 'WinSeparator', { fg = '#303030', bg = c.bg })
+    hl(0, 'Visual', { bg = c.sel })
+    hl(0, 'Search', { fg = c.keyword, bg = '#453d41' })
+    hl(0, 'IncSearch', { fg = '#000000', bg = c.keyword, bold = true })
+    hl(0, 'MatchParen', { fg = c.keyword, bg = '#2a2a2a', bold = true })
+    hl(0, 'Pmenu', { fg = c.fg, bg = '#121212' })
+    hl(0, 'PmenuSel', { fg = '#ffffff', bg = c.sel, bold = true })
+    hl(0, 'PmenuSbar', { bg = '#232323' })
+    hl(0, 'PmenuThumb', { bg = '#484848' })
+    hl(0, 'Folded', { fg = c.dim, bg = c.line })
+    hl(0, 'Title', { fg = c.func, bold = true })
+    hl(0, 'Directory', { fg = c.func })
+    hl(0, 'TabLine', { fg = c.dim, bg = '#0c0c0c' })
+    hl(0, 'TabLineSel', { fg = '#ffffff', bg = '#232323', bold = true })
+    hl(0, 'TabLineFill', { fg = c.fg, bg = '#0c0c0c' })
+
+    -- Sintaxe
+    hl(0, 'Comment', { fg = c.comment })
+    hl(0, 'Constant', { fg = c.const })
+    hl(0, 'String', { fg = c.string })
+    hl(0, 'Character', { fg = c.string })
+    hl(0, 'Number', { fg = c.const })
+    hl(0, 'Float', { fg = c.const })
+    hl(0, 'Boolean', { fg = c.const })
+    hl(0, 'Identifier', { fg = c.fg })
+    hl(0, 'Function', { fg = c.func })
+    hl(0, 'Statement', { fg = c.keyword })
+    hl(0, 'Conditional', { fg = c.keyword })
+    hl(0, 'Repeat', { fg = c.keyword })
+    hl(0, 'Exception', { fg = c.keyword })
+    hl(0, 'Keyword', { fg = c.keyword })
+    hl(0, 'Include', { fg = c.keyword })
+    hl(0, 'PreProc', { fg = c.keyword })
+    hl(0, 'Macro', { fg = c.keyword })
+    hl(0, 'Operator', { fg = c.fg })
+    hl(0, 'Delimiter', { fg = '#a0a0ab' })
+    hl(0, 'Type', { fg = c.type })
+    hl(0, 'StorageClass', { fg = c.keyword })
+    hl(0, 'Structure', { fg = c.type })
+    hl(0, 'Special', { fg = c.special })
+    hl(0, 'Error', { fg = c.error, bold = true })
+    hl(0, 'Todo', { fg = '#000000', bg = c.warn, bold = true })
+
+    -- Diagnósticos
+    hl(0, 'DiagnosticError', { fg = c.error })
+    hl(0, 'DiagnosticWarn', { fg = c.warn })
+    hl(0, 'DiagnosticInfo', { fg = c.info })
+    hl(0, 'DiagnosticHint', { fg = c.type })
+    hl(0, 'DiagnosticUnderlineError', { undercurl = true, sp = c.error })
+    hl(0, 'DiagnosticUnderlineWarn', { undercurl = true, sp = c.warn })
+
+    -- Diff
+    hl(0, 'DiffAdd', { bg = '#10240f' })
+    hl(0, 'DiffDelete', { fg = '#7a2a30', bg = '#2a0f12' })
+    hl(0, 'DiffChange', { bg = '#171c28' })
+    hl(0, 'DiffText', { bg = '#303a52', bold = true })
+end
+
+local function github_dark()
+    local hl = vim.api.nvim_set_hl
+
+    local c = {
+        bg      = '#0d1117',
+        fg      = '#e6edf3',
+        dim     = '#7d8590',
+
+        keyword = '#ff7b72', -- if, for, while, return, import...
+        func    = '#d2a8ff', -- funções
+        string  = '#a5d6ff', -- strings
+        type    = '#ffa657', -- tipos / classes
+        const   = '#79c0ff', -- números, booleanos, constantes
+        comment = '#8b949e', -- comentários
+        special = '#79c0ff', -- escapes / especiais
+
+        error   = '#f85149',
+        warn    = '#d29922',
+        info    = '#58a6ff',
+
+        sel     = '#264f78',
+        line    = '#161b22',
+    }
+
+    -- Base / UI
+    hl(0, 'Normal', { fg = c.fg, bg = c.bg })
+    hl(0, 'NormalFloat', { fg = c.fg, bg = '#161b22' })
+    hl(0, 'FloatBorder', { fg = '#30363d', bg = '#161b22' })
+    hl(0, 'SignColumn', { bg = c.bg })
+
+    hl(0, 'LineNr', { fg = '#484f58', bg = c.bg })
+    hl(0, 'CursorLine', { bg = c.line })
+    hl(0, 'CursorLineNr', { fg = '#e3b341', bg = c.bg, bold = true })
+
+    hl(0, 'NonText', { fg = '#21262d', bg = c.bg })
+    hl(0, 'SpecialKey', { fg = '#21262d', bg = c.bg })
+    hl(0, 'EndOfBuffer', { fg = c.bg, bg = c.bg })
+    hl(0, 'ColorColumn', { bg = c.line })
+
+    hl(0, 'StatusLine', { fg = c.fg, bg = '#161b22' })
+    hl(0, 'StatusLineNC', { fg = c.dim, bg = '#0d1117' })
+
+    hl(0, 'VertSplit', { fg = '#30363d', bg = c.bg })
+    hl(0, 'WinSeparator', { fg = '#30363d', bg = c.bg })
+
+    hl(0, 'Visual', { bg = c.sel })
+
+    hl(0, 'Search', {
+        fg = '#0d1117',
+        bg = '#e3b341',
+    })
+
+    hl(0, 'IncSearch', {
+        fg = '#0d1117',
+        bg = '#e3b341',
+        bold = true,
+    })
+
+    hl(0, 'MatchParen', {
+        fg = '#ffffff',
+        bg = '#30363d',
+        bold = true,
+    })
+
+    -- Completion
+    hl(0, 'Pmenu', {
+        fg = c.fg,
+        bg = '#161b22',
+    })
+
+    hl(0, 'PmenuSel', {
+        fg = '#ffffff',
+        bg = '#264f78',
+        bold = true,
+    })
+
+    hl(0, 'PmenuSbar', {
+        bg = '#21262d',
+    })
+
+    hl(0, 'PmenuThumb', {
+        bg = '#484f58',
+    })
+
+    hl(0, 'Folded', {
+        fg = c.dim,
+        bg = c.line,
+    })
+
+    hl(0, 'Title', {
+        fg = c.func,
+        bold = true,
+    })
+
+    hl(0, 'Directory', {
+        fg = c.func,
+    })
+
+    -- Tabline
+    hl(0, 'TabLine', {
+        fg = c.dim,
+        bg = '#161b22',
+    })
+
+    hl(0, 'TabLineSel', {
+        fg = '#ffffff',
+        bg = '#21262d',
+        bold = true,
+    })
+
+    hl(0, 'TabLineFill', {
+        fg = c.fg,
+        bg = '#0d1117',
+    })
+
+    -- Sintaxe
+    hl(0, 'Comment', { fg = c.comment })
+
+    hl(0, 'Constant', { fg = c.const })
+    hl(0, 'String', { fg = c.string })
+    hl(0, 'Character', { fg = c.string })
+
+    hl(0, 'Number', { fg = c.const })
+    hl(0, 'Float', { fg = c.const })
+    hl(0, 'Boolean', { fg = c.const })
+
+    hl(0, 'Identifier', { fg = c.fg })
+    hl(0, 'Function', { fg = c.func })
+
+    hl(0, 'Statement', { fg = c.keyword })
+    hl(0, 'Conditional', { fg = c.keyword })
+    hl(0, 'Repeat', { fg = c.keyword })
+    hl(0, 'Exception', { fg = c.keyword })
+    hl(0, 'Keyword', { fg = c.keyword })
+
+    hl(0, 'Include', { fg = c.keyword })
+    hl(0, 'PreProc', { fg = c.keyword })
+    hl(0, 'Macro', { fg = c.keyword })
+
+    hl(0, 'Operator', { fg = c.fg })
+    hl(0, 'Delimiter', { fg = '#8b949e' })
+
+    hl(0, 'Type', { fg = c.type })
+    hl(0, 'StorageClass', { fg = c.keyword })
+    hl(0, 'Structure', { fg = c.type })
+
+    hl(0, 'Special', { fg = c.special })
+
+    hl(0, 'Error', {
+        fg = c.error,
+        bold = true,
+    })
+
+    hl(0, 'Todo', {
+        fg = '#0d1117',
+        bg = '#e3b341',
+        bold = true,
+    })
+
+    -- Diagnósticos
+    hl(0, 'DiagnosticError', { fg = c.error })
+    hl(0, 'DiagnosticWarn', { fg = c.warn })
+    hl(0, 'DiagnosticInfo', { fg = c.info })
+    hl(0, 'DiagnosticHint', { fg = c.type })
+
+    hl(0, 'DiagnosticUnderlineError', {
+        undercurl = true,
+        sp = c.error,
+    })
+
+    hl(0, 'DiagnosticUnderlineWarn', {
+        undercurl = true,
+        sp = c.warn,
+    })
+
+    -- Diff
+    hl(0, 'DiffAdd', {
+        bg = '#12261e',
+    })
+
+    hl(0, 'DiffDelete', {
+        fg = '#ff7b72',
+        bg = '#2d1617',
+    })
+
+    hl(0, 'DiffChange', {
+        bg = '#17243a',
+    })
+
+    hl(0, 'DiffText', {
+        bg = '#264f78',
+        bold = true,
+    })
+end
+
+local function git()
+    local hl = vim.api.nvim_set_hl
+
+    local c = {
+        bg      = '#000000',
+        fg      = '#E6E6E6',
+        dim     = '#666666',
+
+        keyword = '#FF5555', -- vermelho
+        func    = '#00FFFF', -- ciano
+        string  = '#FFFF00', -- amarelo
+        type    = '#FF00FF', -- rosa/magenta
+        const   = '#5599FF', -- azul
+        comment = '#666666', -- cinza
+
+        special = '#FF69B4', -- rosa
+        error   = '#FF0000', -- vermelho puro
+        warn    = '#FFFF00', -- amarelo
+        info    = '#00FFFF', -- ciano
+
+        sel     = '#333333',
+        line    = '#111111',
+    }
+
+    -- local c = {
+    -- bg      = '#000000',
+    -- fg      = '#FFFFFF',
+    -- dim     = '#808080',
+    --
+    -- keyword = '#FFFF00', -- amarelo
+    -- func    = '#FF00FF', -- rosa
+    -- string  = '#00FFFF', -- ciano
+    -- type    = '#FF0000', -- vermelho
+    -- const   = '#0000FF', -- azul
+    -- comment = '#808080',
+    --
+    -- special = '#00FFFF',
+    --
+    -- error   = '#FF0000',
+    -- warn    = '#FFFF00',
+    -- info    = '#0000FF',
+    --
+    -- sel     = '#333333',
+    -- line    = '#111111',
+    -- }
+
+    -- Base / UI
+    hl(0, 'Normal', { fg = c.fg, bg = c.bg })
+    hl(0, 'NormalFloat', { fg = c.fg, bg = '#161b22' })
+    hl(0, 'FloatBorder', { fg = '#30363d', bg = '#161b22' })
+    hl(0, 'SignColumn', { bg = c.bg })
+
+    hl(0, 'LineNr', { fg = '#484f58', bg = c.bg })
+    hl(0, 'CursorLine', { bg = c.line })
+    hl(0, 'CursorLineNr', { fg = '#e3b341', bg = c.bg, bold = true })
+
+    hl(0, 'NonText', { fg = '#21262d', bg = c.bg })
+    hl(0, 'SpecialKey', { fg = '#21262d', bg = c.bg })
+    hl(0, 'EndOfBuffer', { fg = c.bg, bg = c.bg })
+    hl(0, 'ColorColumn', { bg = c.line })
+
+    hl(0, 'StatusLine', { fg = c.fg, bg = '#161b22' })
+    hl(0, 'StatusLineNC', { fg = c.dim, bg = '#0d1117' })
+
+    hl(0, 'VertSplit', { fg = '#30363d', bg = c.bg })
+    hl(0, 'WinSeparator', { fg = '#30363d', bg = c.bg })
+
+    hl(0, 'Visual', { bg = c.sel })
+
+    hl(0, 'Search', {
+        fg = '#0d1117',
+        bg = '#e3b341',
+    })
+
+    hl(0, 'IncSearch', {
+        fg = '#0d1117',
+        bg = '#e3b341',
+        bold = true,
+    })
+
+    hl(0, 'MatchParen', {
+        fg = '#ffffff',
+        bg = '#30363d',
+        bold = true,
+    })
+
+    -- Completion
+    hl(0, 'Pmenu', {
+        fg = c.fg,
+        bg = '#161b22',
+    })
+
+    hl(0, 'PmenuSel', {
+        fg = '#ffffff',
+        bg = '#264f78',
+        bold = true,
+    })
+
+    hl(0, 'PmenuSbar', {
+        bg = '#21262d',
+    })
+
+    hl(0, 'PmenuThumb', {
+        bg = '#484f58',
+    })
+
+    hl(0, 'Folded', {
+        fg = c.dim,
+        bg = c.line,
+    })
+
+    hl(0, 'Title', {
+        fg = c.func,
+        bold = true,
+    })
+
+    hl(0, 'Directory', {
+        fg = c.func,
+    })
+
+    -- Tabline
+    hl(0, 'TabLine', {
+        fg = c.dim,
+        bg = '#161b22',
+    })
+
+    hl(0, 'TabLineSel', {
+        fg = '#ffffff',
+        bg = '#21262d',
+        bold = true,
+    })
+
+    hl(0, 'TabLineFill', {
+        fg = c.fg,
+        bg = '#0d1117',
+    })
+
+    -- Sintaxe
+    hl(0, 'Comment', { fg = c.comment })
+
+    hl(0, 'Constant', { fg = c.const })
+    hl(0, 'String', { fg = c.string })
+    hl(0, 'Character', { fg = c.string })
+
+    hl(0, 'Number', { fg = c.const })
+    hl(0, 'Float', { fg = c.const })
+    hl(0, 'Boolean', { fg = c.const })
+
+    hl(0, 'Identifier', { fg = c.fg })
+    hl(0, 'Function', { fg = c.func })
+
+    hl(0, 'Statement', { fg = c.keyword })
+    hl(0, 'Conditional', { fg = c.keyword })
+    hl(0, 'Repeat', { fg = c.keyword })
+    hl(0, 'Exception', { fg = c.keyword })
+    hl(0, 'Keyword', { fg = c.keyword })
+
+    hl(0, 'Include', { fg = c.keyword })
+    hl(0, 'PreProc', { fg = c.keyword })
+    hl(0, 'Macro', { fg = c.keyword })
+
+    hl(0, 'Operator', { fg = c.fg })
+    hl(0, 'Delimiter', { fg = '#8b949e' })
+
+    hl(0, 'Type', { fg = c.type })
+    hl(0, 'StorageClass', { fg = c.keyword })
+    hl(0, 'Structure', { fg = c.type })
+
+    hl(0, 'Special', { fg = c.special })
+
+    hl(0, 'Error', {
+        fg = c.error,
+        bold = true,
+    })
+
+    hl(0, 'Todo', {
+        fg = '#0d1117',
+        bg = '#e3b341',
+        bold = true,
+    })
+
+    -- Diagnósticos
+    hl(0, 'DiagnosticError', { fg = c.error })
+    hl(0, 'DiagnosticWarn', { fg = c.warn })
+    hl(0, 'DiagnosticInfo', { fg = c.info })
+    hl(0, 'DiagnosticHint', { fg = c.type })
+
+    hl(0, 'DiagnosticUnderlineError', {
+        undercurl = true,
+        sp = c.error,
+    })
+
+    hl(0, 'DiagnosticUnderlineWarn', {
+        undercurl = true,
+        sp = c.warn,
+    })
+
+    -- Diff
+    hl(0, 'DiffAdd', {
+        bg = '#12261e',
+    })
+
+    hl(0, 'DiffDelete', {
+        fg = '#ff7b72',
+        bg = '#2d1617',
+    })
+
+    hl(0, 'DiffChange', {
+        bg = '#17243a',
+    })
+
+    hl(0, 'DiffText', {
+        bg = '#264f78',
+        bold = true,
+    })
+end
+
 function ColorMyPencils(color)
-    --color = color or "alabaster"
+    -- color = color or "alabaster"
 
     local ok = pcall(vim.cmd.colorscheme, color)
     if not ok then
@@ -2166,6 +2821,10 @@ function ColorMyPencils(color)
     end
 
     dark()
+    --gruber()
+    --theme()
+    --github_dark()
+    --git()
     remove_all_italics()
 
     vim.api.nvim_set_hl(0, "Normal", { bg = "none" })
